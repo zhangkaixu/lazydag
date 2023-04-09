@@ -2,15 +2,17 @@
 A Directed Acyclic Graph for lazy evaluation for Python
 
 ```python
-from lazydag import LazyDAG
-dag = LazyDAG(a=3)
-dag.add_edge(['c'], lambda a, b:a+b, 'a', 'b')
+from lazydag.lazyclass import lazyclass
 
-@dag.edge
-def d(a, b):
-    return a*b
+@lazyclass
+class DAG:
+    def sum(a, b):
+        return a + b
+    def double(sum):
+        return sum * 2
 
-self.assertEqual(dag(b=4).c, 7)
-self.assertEqual(dag(b=9).c, 12)
-self.assertEqual(dag(b=3).d, 9)
+dag = DAG(a=4, b=3)
+self.assertTrue(dag.sum==7)     # `sum` was calculated in this line
+dag.set(a=5)                    # reset `a`
+self.assertTrue(dag.double==16) # `sum` was calculated again in this line
 ```
