@@ -16,9 +16,17 @@ class LazyVariable:
         self._func = func
     
     def _set_value(self, value):
+        if self._func is not Empty:
+            raise RuntimeError(
+                f'can not set value to a var {self.name} whose func already set')
+        self._value = value
+        # make all sucessors `dirty`
+        for successor in self._successors:
+            successor._value = Empty
+    
+    def _set_returned_value(self, value):
         if self._value is not Empty:
-            for successor in self._successors:
-                successor._value = Empty
+            raise RuntimeError('value already set')
         self._value = value
     
     def _is_reachable(self):
@@ -51,11 +59,14 @@ class LazyFunction:
         all_successors = self._all_successors()
         #print('all_predecessors', [v.name for v in all_predecessors])
         #print('all_successors', [v.name for v in all_successors])
+
+        # check for cycles
         inter = all_predecessors & all_successors
         if inter:
             names = [v.name for v in inter]
             raise RuntimeError('cycle detected for variables: ' + ', '.join(names))
 
+        # propagate predecessors and successors
         for predecessor in all_predecessors:
             for successor in all_successors:
                 predecessor._successors.add(successor)
@@ -83,7 +94,7 @@ class LazyFunction:
         if len(self.return_values) == 1:
             ret = [ret]
         for value, ret_value in zip(self.return_values, ret):
-            value._set_value(ret_value)
+            value._set_returned_value(ret_value)
     
     def _is_reachable(self):
         return all(value._is_reachable() for value in self.args) and \
@@ -91,30 +102,37 @@ class LazyFunction:
 
 
 class LazyProperty(object):
+    _NAME_PREFIX = '_'
     def __init__(self, func=Empty):
         self._func = func
 
     def __set_name__(self, owner, name):
         self.name = name
-        self._name = '_' + name
+        self._name = self._NAME_PREFIX + name
 
     def _init_property(self, obj):
         name = self.name
         var = LazyVariable(name)
         setattr(obj, self._name, var)
         if self._func is not Empty:
+            # parse the function signature
             import inspect
             fullargspec = inspect.getfullargspec(self._func)
             args = fullargspec.args
+
+            # make sure the return value is not in the args
             if name in args:
                 func_str = f'{self._func.__name__}{str(inspect.signature(self._func))}'
                 raise RuntimeError(f'return value `{name}` in function {func_str} args')
+
+            # make sure all args are initialized
             cls = type(obj)
             for arg in args:
-                if not hasattr(obj, '_' + arg):
+                if not hasattr(obj, self._NAME_PREFIX + arg):
                     cls.__dict__[arg]._init_property(obj)
 
-            args = [getattr(obj, '_' + arg) for arg in args]
+            # create a LazyFunction to calculate the value
+            args = [getattr(obj, self._NAME_PREFIX + arg) for arg in args]
             LazyFunction([var], self._func, *args)
 
     def __get__(self, obj, objtype=None):
@@ -124,14 +142,9 @@ class LazyProperty(object):
         return getattr(obj, self._name).value
 
     def __set__(self, obj, value):
-        if self._func is not Empty:
-            raise RuntimeError('cannot set value to a lazy property with a function')
         if not hasattr(obj, self._name):
             self._init_property(obj)
-        if isinstance(value, LazyFunction):
-            getattr(obj, self._name)._set_func(value)
-        else:
-            getattr(obj, self._name)._set_value(value)
+        getattr(obj, self._name)._set_value(value)
     
     #def __delete__(self, obj):
     #    pass
