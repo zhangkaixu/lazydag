@@ -105,6 +105,70 @@ class TestLazyClass(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             a = A()
             a.set(a=3)
+        
+
+        @lazyclass
+        class C:
+            def a():
+                return 3
+            def b(a):
+                return a * 2
+        c = C()
+        self.assertTrue(c.b==6)
+    
+    def test_subclass(self):
+        from lazydag.lazyclass import lazyclass
+        @lazyclass
+        class A:
+            def a(b):
+                return b * 2
+        @lazyclass
+        class B(A):
+            def b():
+                return 3
+        b = B()
+        self.assertTrue(b.a==6)
+
+        @lazyclass
+        class A:
+            def b():
+                return 3
+        @lazyclass
+        class B(A):
+            def a(b):
+                return b * 2
+        b = B()
+        self.assertTrue(b.a==6)
+
+
+        # test override
+        @lazyclass
+        class A:
+            def a():
+                return 'old'
+            
+            def b(a):
+                return a * 2
+        @lazyclass
+        class B(A):
+            def a():
+                return 'new'
+        b = B()
+        self.assertTrue(b.a=='new')
+        self.assertTrue(b.b=='newnew')
+
+        # test assignment
+        @lazyclass
+        class A:
+            def b(a):
+                return a * 2
+        @lazyclass
+        class B(A):
+            def c(b):
+                return b + 1
+        b = B()
+        b.set(a=3)
+
 
     def test_LazyClass(self):
         from lazydag.lazyclass import lazyclass

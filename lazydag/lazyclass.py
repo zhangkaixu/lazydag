@@ -40,7 +40,7 @@ class LazyVariable:
     def value(self):
         if self._value is Empty:
             if self._func is Empty:
-                raise AttributeError('value and func not set')
+                raise AttributeError(f'value and func not set for var `{self.name}`')
             self._func()
         if self._value is Empty:
             raise RuntimeError('value still not set after func call')
@@ -129,7 +129,11 @@ class LazyProperty(object):
             cls = type(obj)
             for arg in args:
                 if not hasattr(obj, self._NAME_PREFIX + arg):
-                    cls.__dict__[arg]._init_property(obj)
+                    for _class in cls.__mro__:
+                        if arg in _class.__dict__:
+                            _class.__dict__[arg]._init_property(obj)
+                            break
+                    #cls.__dict__[arg]._init_property(obj)
 
             # create a LazyFunction to calculate the value
             args = [getattr(obj, self._NAME_PREFIX + arg) for arg in args]
@@ -157,9 +161,11 @@ def lazyclass(cls):
     lazy_properties = defaultdict(dict)
     for sup in list(reversed(cls.__mro__)):
         for key, func in sup.__dict__.items():
-            if inspect.isfunction(func):
+            if isinstance(func, LazyProperty):
+                lazy_properties[key]['super'] = True
+            elif inspect.isfunction(func):
                 fullargs = inspect.getfullargspec(func)
-                if fullargs.args[0] == 'self':
+                if (len(fullargs.args)>0) and (fullargs.args[0] == 'self'):
                     continue
                 else:
                     lazy_properties[key]['func'] = func
@@ -168,8 +174,12 @@ def lazyclass(cls):
             else:
                 pass
             pass
+    
     for k, v in lazy_properties.items():
-        #print(k)
+        if len(v) == 1 and 'super' in v:
+            continue
+        if hasattr(cls, k) and isinstance(getattr(cls, k), LazyProperty):
+            continue
         if 'func' in v:
             p = LazyProperty(v['func'])
         else:
@@ -181,9 +191,19 @@ def lazyclass(cls):
     def _set(self, **kwargs):
         """this method is only used to set lazy properties"""
         for k, v in kwargs.items():
-            if ((k not in type(self).__dict__)
-                or (not isinstance(type(self).__dict__[k], LazyProperty))):
-                raise AttributeError(f'cannot set non-lazy property attribute {k} to {v}')
+            for _class in type(self).__mro__:
+                if k in _class.__dict__:
+                    if isinstance(_class.__dict__[k], LazyProperty):
+                        setattr(self, k, v)
+                    else:
+                        raise AttributeError(f'cannot set non-lazy property attribute {k} to {v}')
+                    break
+            else:
+                raise AttributeError(f'attribute {k} not found')
+
+            #if ((k not in type(self).__dict__)
+            #    or (not isinstance(type(self).__dict__[k], LazyProperty))):
+            #    raise AttributeError(f'cannot set non-lazy property attribute {k} to {v}')
             setattr(self, k, v)
         return self
     setattr(cls, 'set', _set)
