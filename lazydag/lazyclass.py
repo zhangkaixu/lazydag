@@ -1,5 +1,7 @@
 import inspect
 from collections import defaultdict
+from typing import Any
+
 class Empty:
     pass
 class LazyVariable:
@@ -10,12 +12,12 @@ class LazyVariable:
         self._successors = set()
         self._predecessors = set()
 
-    def _set_func(self, func):
+    def _set_func(self, func: 'LazyFunction'):
         if self._func is not Empty:
             raise RuntimeError('func already set')
         self._func = func
     
-    def _set_value(self, value):
+    def _set_value(self, value: Any):
         if self._func is not Empty:
             raise RuntimeError(
                 f'can not set value to a var {self.name} whose func already set')
@@ -24,7 +26,7 @@ class LazyVariable:
         for successor in self._successors:
             successor._value = Empty
     
-    def _set_returned_value(self, value):
+    def _set_returned_value(self, value: Any) -> None:
         if self._value is not Empty:
             raise RuntimeError('value already set')
         self._value = value
@@ -100,6 +102,15 @@ class LazyFunction:
         return all(value._is_reachable() for value in self.args) and \
                all(value._is_reachable() for value in self.kwargs.values())
 
+def _get_lazy_property(obj, key):
+    for _class in type(obj).__mro__:
+        if key in _class.__dict__:
+            if isinstance(_class.__dict__[key], LazyProperty):
+                return _class.__dict__[key]
+            else:
+                raise AttributeError(f'attribute {key} is not a lazy property')
+    else:
+        raise AttributeError(f'attribute {key} not found')
 
 class LazyProperty(object):
     _NAME_PREFIX = '_'
@@ -109,11 +120,17 @@ class LazyProperty(object):
     def __set_name__(self, owner, name):
         self.name = name
         self._name = self._NAME_PREFIX + name
-
-    def _init_property(self, obj):
+    
+    def _init_variable(self, obj):
+        if hasattr(obj, self._name):
+            return getattr(obj, self._name)
         name = self.name
         var = LazyVariable(name)
         setattr(obj, self._name, var)
+        return var
+
+    def _init_property(self, obj):
+        var = self._init_variable(obj)
         if self._func is not Empty:
             # parse the function signature
             import inspect
@@ -121,23 +138,23 @@ class LazyProperty(object):
             args = fullargspec.args
 
             # make sure the return value is not in the args
-            if name in args:
+            if self.name in args:
                 func_str = f'{self._func.__name__}{str(inspect.signature(self._func))}'
-                raise RuntimeError(f'return value `{name}` in function {func_str} args')
+                raise RuntimeError(f'return value `{self.name}` in function {func_str} args')
 
             # make sure all args are initialized
             cls = type(obj)
             for arg in args:
                 if not hasattr(obj, self._NAME_PREFIX + arg):
-                    for _class in cls.__mro__:
-                        if arg in _class.__dict__:
-                            _class.__dict__[arg]._init_property(obj)
-                            break
-                    #cls.__dict__[arg]._init_property(obj)
+                    obj._get_lazy_property(arg)._init_property(obj)
+            
+            return_values = self._func.__name__.split('__')
+            return_vars = [_get_lazy_property(obj, return_value)._init_variable(obj) for return_value in return_values]
 
             # create a LazyFunction to calculate the value
             args = [getattr(obj, self._NAME_PREFIX + arg) for arg in args]
-            LazyFunction([var], self._func, *args)
+            #LazyFunction([var], self._func, *args)
+            LazyFunction(return_vars, self._func, *args)
 
     def __get__(self, obj, objtype=None):
         if not hasattr(obj, self._name):
@@ -166,14 +183,20 @@ def lazyclass(cls):
             elif inspect.isfunction(func):
                 fullargs = inspect.getfullargspec(func)
                 if (len(fullargs.args)>0) and (fullargs.args[0] == 'self'):
+                    # this is an ordinary method
                     continue
                 else:
-                    lazy_properties[key]['func'] = func
+                    if '__' in key:
+                        # a function with multiple return values
+                        keys = key.split('__')
+                    else:
+                        keys = [key]
+                    for key in keys:
+                        lazy_properties[key]['func'] = func
                     for arg in fullargs.args:
                         lazy_properties[arg]
             else:
                 pass
-            pass
     
     for k, v in lazy_properties.items():
         if len(v) == 1 and 'super' in v:
@@ -188,25 +211,15 @@ def lazyclass(cls):
         setattr(cls, k, p)
     
     # add some methods
+    setattr(cls, '_get_lazy_property', _get_lazy_property)
+
     def _set(self, **kwargs):
         """this method is only used to set lazy properties"""
         for k, v in kwargs.items():
-            for _class in type(self).__mro__:
-                if k in _class.__dict__:
-                    if isinstance(_class.__dict__[k], LazyProperty):
-                        setattr(self, k, v)
-                    else:
-                        raise AttributeError(f'cannot set non-lazy property attribute {k} to {v}')
-                    break
-            else:
-                raise AttributeError(f'attribute {k} not found')
-
-            #if ((k not in type(self).__dict__)
-            #    or (not isinstance(type(self).__dict__[k], LazyProperty))):
-            #    raise AttributeError(f'cannot set non-lazy property attribute {k} to {v}')
-            setattr(self, k, v)
+            self._get_lazy_property(k).__set__(self, v)
         return self
     setattr(cls, 'set', _set)
+
 
     def __init__(self, **kwargs):
         self.set(**kwargs)

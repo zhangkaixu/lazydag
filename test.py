@@ -169,6 +169,20 @@ class TestLazyClass(unittest.TestCase):
         b = B()
         b.set(a=3)
 
+    def test_multiple_return(self):
+        from lazydag.lazyclass import lazyclass
+
+        @lazyclass
+        class A:
+            def c__b(a):
+                return a+1, a-1
+            def d(c):
+                return c * 2
+        a = A(a=3)
+        self.assertTrue(a.c==4)
+        self.assertTrue(a.b==2)
+        a.set(a=4)
+        self.assertTrue(a.d==10)
 
     def test_LazyClass(self):
         from lazydag.lazyclass import lazyclass
