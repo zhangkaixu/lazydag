@@ -115,10 +115,11 @@ def _get_lazy_property(obj, key):
         raise AttributeError(f'attribute {key} not found')
 
 class LazyProperty(object):
-    __slots__ = ['name', '_func', '_name']
+    __slots__ = ['name', '_func', '_name', '_default']
     _NAME_PREFIX = '__lazy_'
-    def __init__(self, func=Empty):
+    def __init__(self, func=Empty, default=Empty):
         self._func = func
+        self._default = default
 
     def __set_name__(self, owner, name):
         self.name = name
@@ -128,7 +129,7 @@ class LazyProperty(object):
         if hasattr(obj, self._name):
             return getattr(obj, self._name)
         name = self.name
-        var = LazyVariable(name)
+        var = LazyVariable(name, value=self._default)
         setattr(obj, self._name, var)
         return var
 
@@ -179,6 +180,20 @@ lazy_property = LazyProperty
 def lazyclass(cls):
     # add lazy properties
     lazy_properties = defaultdict(dict)
+
+    # deal with annotations
+    if hasattr(cls, '__annotations__'):
+        #annotations = cls.__annotations__
+        annotations = inspect.get_annotations(cls)
+        print(cls.__name__)
+        print(annotations)
+        for k, v in annotations.items():
+            if ((isinstance(v, type) and issubclass(v, LazyProperty)) 
+                or (isinstance(v, str) and v.lower() in ['lazy_property', 'lazyproperty'])):
+                lazy_properties[k]['default'] = getattr(cls, k)#cls.__dict__[k]
+        #delattr(cls, '__annotations__')
+
+    # deal with super classes
     for sup in list(reversed(cls.__mro__)):
         for key, func in sup.__dict__.items():
             if isinstance(func, LazyProperty):
@@ -209,7 +224,7 @@ def lazyclass(cls):
         if 'func' in v:
             p = LazyProperty(v['func'])
         else:
-            p = LazyProperty()
+            p = LazyProperty(default=v.get('default', Empty))
         p.__set_name__(cls, k)
         setattr(cls, k, p)
     

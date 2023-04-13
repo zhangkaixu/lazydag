@@ -168,6 +168,31 @@ class TestLazyClass(unittest.TestCase):
                 return b + 1
         b = B()
         b.set(a=3)
+    
+    def test_default_value(self):
+        from lazydag.lazyclass import lazyclass, LazyProperty
+        @lazyclass
+        class A:
+            b: LazyProperty = 3
+            c: "lazyproperty" = 4
+            def a(b, c):
+                return b + c
+        
+        a = A()
+        self.assertTrue(a.a==7)
+
+        a.set(b=4)
+        self.assertTrue(a.a==8)
+
+        print('00000000000000')
+        @lazyclass
+        class B(A):
+            def d(b):
+                return b * 2
+            
+        #print(B.__annotations__)
+        b = B()
+        self.assertTrue(b.d==6)
 
     def test_multiple_return(self):
         from lazydag.lazyclass import lazyclass
@@ -189,12 +214,13 @@ class TestLazyClass(unittest.TestCase):
 
         @lazyclass
         class DAG:
+            a: "lazy_property" = 4
             def sum(a, b):
                 return a + b
             def double(sum):
                 return sum * 2
 
-        dag = DAG(a=4, b=3)
+        dag = DAG(b=3)
         self.assertTrue(dag.sum==7)     # `sum` was calculated in this line
         dag.set(a=5)                    # reset `a`
         self.assertTrue(dag.double==16) # `sum` was calculated again in this line
