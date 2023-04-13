@@ -183,15 +183,18 @@ def lazyclass(cls):
 
     # deal with annotations
     if hasattr(cls, '__annotations__'):
-        #annotations = cls.__annotations__
-        annotations = inspect.get_annotations(cls)
-        print(cls.__name__)
-        print(annotations)
+        if hasattr(inspect, 'get_annotations'):
+            annotations = inspect.get_annotations(cls)
+        else:
+            annotations = cls.__annotations__
         for k, v in annotations.items():
             if ((isinstance(v, type) and issubclass(v, LazyProperty)) 
                 or (isinstance(v, str) and v.lower() in ['lazy_property', 'lazyproperty'])):
                 lazy_properties[k]['default'] = getattr(cls, k)#cls.__dict__[k]
-        #delattr(cls, '__annotations__')
+        if hasattr(inspect, 'get_annotations'):
+            pass
+        else:
+            delattr(cls, '__annotations__')
 
     # deal with super classes
     for sup in list(reversed(cls.__mro__)):
