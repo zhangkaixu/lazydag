@@ -184,7 +184,6 @@ class TestLazyClass(unittest.TestCase):
         a.set(b=4)
         self.assertTrue(a.a==8)
 
-        print('00000000000000')
         @lazyclass
         class B(A):
             def d(b):
