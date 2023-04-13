@@ -5,6 +5,7 @@ from typing import Any
 class Empty:
     pass
 class LazyVariable:
+    __slots__ = ['name', '_value', '_func', '_successors', '_predecessors']
     def __init__(self, name, value=Empty, func=Empty):
         self.name = name
         self._value = value
@@ -49,6 +50,7 @@ class LazyVariable:
         return self._value
 
 class LazyFunction:
+    __slots__ = ['return_values', 'func', 'args', 'kwargs']
     def __init__(self, return_values, func, *args, **kwargs):
         self.return_values = return_values
         self.func = func
@@ -113,7 +115,8 @@ def _get_lazy_property(obj, key):
         raise AttributeError(f'attribute {key} not found')
 
 class LazyProperty(object):
-    _NAME_PREFIX = '_'
+    __slots__ = ['name', '_func', '_name']
+    _NAME_PREFIX = '__lazy_'
     def __init__(self, func=Empty):
         self._func = func
 
